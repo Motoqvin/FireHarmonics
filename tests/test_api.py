@@ -10,7 +10,7 @@ from FireDetectionAPP import main
 
 class APITests(unittest.TestCase):
     def setUp(self):
-        self.environment = patch.dict(os.environ, {"NASA_FIRMS_MAP_KEY": "test-key"})
+        self.environment = patch.dict(os.environ, {"NASA_FIRMS_MAP_KEY": "test-key", "FIREHARMONICS_ML_ENGINE": "disabled"})
         self.environment.start()
         self.addCleanup(self.environment.stop)
         self.client = TestClient(main.app)

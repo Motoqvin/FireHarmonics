@@ -1,5 +1,7 @@
 """FastAPI entry point. Run from the project root with one Uvicorn process."""
 import asyncio
+import csv
+import io
 import json
 import os
 import sys
@@ -8,7 +10,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 # Keep `python FireDetectionAPP/main.py` working as well as module-based startup.
 if __package__ in {None, ""}:
@@ -19,11 +21,11 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import ValidationError
 
-from FireDetectionAPP import nasa
+from FireDetectionAPP import nasa, satellites
 from FireDetectionAPP.archives import MAX_UPLOAD_BYTES, parse_archive
 from FireDetectionAPP.jobs import TERMINAL, AnalysisService
 from FireDetectionAPP.nasa import AVAILABILITY_BASE_URL, FIRMS_BASE_URL, get_map_key, parse_csv
@@ -52,6 +54,9 @@ def create_service():
 @asynccontextmanager
 async def lifespan(application):
     application.state.service = create_service()
+    # Import FireLens (pandas, scikit-learn, XGBoost) in the background so the first request is not delayed.
+    threading.Thread(target=lambda: application.state.service.engine.available, daemon=True,
+                     name="firelens-warmup").start()
     try:
         yield
     finally:
@@ -60,7 +65,9 @@ async def lifespan(application):
 
 app = FastAPI(
     title="FireHarmonics API", version="1.0.0", lifespan=lifespan,
-    description="NASA FIRMS detections, archive imports and background descriptive analyses. No forecast model is installed.",
+    description=("NASA FIRMS detections, archive imports and background location analyses: descriptive statistics of the "
+                 "requested FIRMS source plus the FireLens ML engine (patterns, anomalies, hotspots and a monthly "
+                 "probability of at least one satellite hotspot detection). See GET /api/v1/model for engine status."),
     responses={
         500: {"model": ErrorResponse, "description": "Missing configuration or internal failure"},
         502: {"model": ErrorResponse, "description": "NASA request or CSV failure"},
@@ -277,9 +284,14 @@ def harmonized(manager: Service, location: Location,
                offset: int = Query(default=0, ge=0), limit: int = Query(default=1000, ge=1, le=10000)):
     cached = manager.store.latest_location(location)
     if not cached:
-        return {"status_code": 200, "status": "insufficient_data", "count": 0, "rows": []}
+        return {"status_code": 200, "status": "insufficient_data", "product": "raw_detections",
+                "harmonization_status": "not_harmonized", "count": 0, "rows": []}
     rows = cached["detections"]
-    return {"status_code": 200, "status": "available", "count": len(rows), "offset": offset,
+    return {"status_code": 200, "status": "available", "product": "raw_detections",
+            "harmonization_status": "not_harmonized",
+            "explanation": "Raw detections of the requested source for a saved analysis. They are not harmonized; "
+                           "see /api/v1/harmonization for the genuine (regional) harmonized products.",
+            "count": len(rows), "offset": offset,
             "limit": limit, "rows": rows[offset:offset + limit], "coverage": cached["result"]["coverage"],
             "cached_at": cached["cached_at"], "stale": not manager.fresh(cached)}
 
@@ -313,9 +325,90 @@ def import_archive(
 
 @app.get("/api/v1/model", tags=["Model status"])
 @app.get("/api/v1/models", tags=["Model status"])
-def model_status():
-    return {"status_code": 200, "status": "not_configured", "available": False, "models": [],
-            "prediction": {"probability": None, "explanation": "A prediction model will be added later. Descriptive data analysis is available now."}}
+def model_status(manager: Service):
+    """FireLens engine and model status. Loads the model once to verify it; never reveals the NASA key."""
+    state = manager.engine.status(load_model=True)
+    model = state.get("model") or {}
+    gate = model.get("method_gate") or {}
+    xgb_selected = (any(method == "xgboost_pooled" for leads in gate.get("in_domain", {}).values() for method in leads.values())
+                    or any(method == "xgboost_pooled" for method in gate.get("out_of_domain", {}).values()))
+    ready = bool(state.get("available"))
+    models = [
+        {"id": "global_disc_forecaster", "role": "forecast", "method": "xgboost_pooled",
+         "loaded": model.get("loadable"), "artifact_present": model.get("artifact_present"),
+         "selected_by_validation_gate": xgb_selected if gate else None, "method_gate": gate or None,
+         "note": ("Used only where it passed the pre-registered held-out test. In the installed model it passed for "
+                  "no region and no lead, so its probability is reported for comparison only.")
+         if gate and not xgb_selected else None},
+        {"id": "seasonal_baseline", "role": "forecast", "method": "seasonal_baseline", "loaded": ready,
+         "description": "Same-calendar-month climatology of the disc (raw or isotonic-calibrated), chosen per region and lead."},
+        {"id": "isolation_forest", "role": "pattern_discovery", "loaded": ready, "trained_artifact": False,
+         "description": "Fitted per analysis on 0.05-degree cell-months to flag unusual cell-months."},
+        {"id": "gi_star", "role": "hotspots", "loaded": ready, "trained_artifact": False,
+         "description": "Getis-Ord Gi* on 0.05-degree cells inside the disc (recurring hotspots)."},
+    ]
+    return {"status_code": 200, "status": state["status"], "available": ready, "engine": state, "models": models,
+            "harmonization": {key: value for key, value in satellites.overview().items() if key != "regions"},
+            "prediction": {"probability": None, "methods": ["xgboost_pooled", "seasonal_baseline", "unavailable"],
+                           "definition": "Probability of at least one usable S-NPP VIIRS vegetation-fire detection within "
+                                         "the radius during the target month (a satellite detection, not a wildfire ignition).",
+                           "explanation": "Probabilities are produced per location by POST /api/v1/analyses."
+                           if ready else "The ML engine is not available; analyses return prediction.probability=null."}}
+
+
+@app.get("/api/v1/harmonization", tags=["Harmonization"])
+def harmonization_overview():
+    """Which harmonized (MODIS-equivalent) products genuinely exist, with their validation status."""
+    return {"status_code": 200, **satellites.overview()}
+
+
+@app.get("/api/v1/harmonization/regions/{region_id}", tags=["Harmonization"])
+def harmonization_region(region_id: str):
+    series = satellites.regional_series(region_id)
+    if series is None:
+        raise HTTPException(404, "No harmonized series for this region")
+    return {"status_code": 200, "status": "regional_only", "location_scale": "not_validated", **series}
+
+
+EXPORT_TABLES = {
+    "daily": ("historical_activity", "daily_counts"), "monthly": ("historical_activity", "monthly_counts"),
+    "annual": ("historical_activity", "annual_counts"), "hotspots": ("hotspots",),
+    "ml_monthly": ("ml_analysis", "historical_activity", "monthly"),
+    "ml_seasonal": ("ml_analysis", "seasonal_patterns", "by_calendar_month"),
+    "ml_anomalies": ("ml_analysis", "anomalies"), "ml_hotspots": ("ml_analysis", "hotspots"),
+}
+ExportTable = Literal["daily", "monthly", "annual", "hotspots", "ml_monthly", "ml_seasonal", "ml_anomalies", "ml_hotspots"]
+
+
+@app.get("/api/v1/analyses/{job_id}/export", tags=["Analyses"],
+         responses={200: {"content": {"application/json": {}, "text/csv": {}}}})
+def export_analysis(job_id: str, manager: Service, format: Literal["json", "csv"] = "json",
+                    table: ExportTable = "monthly"):
+    """Download a completed result as JSON, or one of its tables as CSV. PDF rendering is a frontend task."""
+    job = manager.require_job(job_id)
+    if job["status"] != "completed":
+        raise HTTPException(409, "Only completed analyses can be exported")
+    result = AnalysisResult.model_validate(job["result"]).model_dump(mode="json")
+    name = f"fireharmonics-{job_id}"
+    if format == "json":
+        body = json.dumps({"job_id": job_id, "request": job["request"], "result": result}, allow_nan=False, indent=1)
+        return Response(body, media_type="application/json",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.json"'})
+    rows = result
+    for key in EXPORT_TABLES[table]:
+        rows = rows.get(key) if isinstance(rows, dict) else None
+    if not isinstance(rows, list):
+        raise HTTPException(409, f"Table '{table}' is not available for this result (see result.components)")
+    columns = list(dict.fromkeys(key for row in rows for key in row))
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=columns, extrasaction="ignore", lineterminator="\n")
+    writer.writeheader()
+    for row in rows:
+        # JSON spelling for nested values and booleans; missing values (None) become empty cells.
+        writer.writerow({key: json.dumps(value) if isinstance(value, (dict, list, bool)) else value
+                         for key, value in row.items()})
+    return Response(buffer.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{name}-{table}.csv"'})
 
 
 if __name__ == "__main__":

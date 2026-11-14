@@ -15,10 +15,21 @@ def fingerprint(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def next_month(today=None):
+    today = today or datetime.now(timezone.utc).date()
+    return f"{today.year + today.month // 12:04d}-{today.month % 12 + 1:02d}"
+
+
 def request_key(request):
     value = request.model_dump(mode="json")
     if value["start_date"] is not None:
         value.pop("lookback_days")
+    value.pop("location_name", None)   # a display label; it does not change the analysis
+    if value.get("ml_mode", "off") == "off":
+        value.pop("target_month", None)
+        value.pop("history_years", None)
+    elif value.get("target_month") is None:
+        value["target_month"] = next_month()  # the default target changes at month boundaries
     return fingerprint(value)
 
 
