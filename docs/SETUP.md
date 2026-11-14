@@ -55,6 +55,9 @@ Expected result: your prompt usually starts with `(.venv)`.
 python -m pip install -r requirements.txt
 ```
 
+This also installs the FireLens fire model from the `firelens` folder.
+The first install can take a few minutes.
+
 ## 5. Start the server
 
 ```bash
