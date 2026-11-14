@@ -1,0 +1,13 @@
+requests>=2.31
+python-dotenv>=1.0
+pandas>=2.1
+pyarrow>=14
+numpy>=1.26
+scipy>=1.11
+matplotlib>=3.8
+# notebook execution (jupyter metapackage optional)
+nbformat>=5.9
+nbclient>=0.10
+ipykernel>=6.29
+# tests
+pytest>=8

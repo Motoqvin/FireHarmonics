@@ -59,6 +59,14 @@ app = FastAPI(
 )
 
 
+try:
+    from .firelens_api import router as firelens_router
+except ImportError:  # run as a script: python FireDetectionAPP/main.py
+    from firelens_api import router as firelens_router
+
+app.include_router(firelens_router)
+
+
 @app.exception_handler(StarletteHTTPException)
 async def http_error_handler(request: Request, exc: StarletteHTTPException):
     return JSONResponse(
