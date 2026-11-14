@@ -64,6 +64,8 @@ python -m uvicorn FireDetectionAPP.main:app --reload
 Expected result: the terminal shows `http://127.0.0.1:8000`.
 
 Keep this terminal open. Saving a Python file reloads the backend.
+Use a single server process; do not add `--workers`.
+Jobs and saved results are stored in `FireDetectionAPP/.data/`.
 
 Open <http://127.0.0.1:8000/health>. It should return HTTP 200.
 

@@ -40,7 +40,7 @@ class APITests(unittest.TestCase):
                 self.assertEqual(body["day_range"], main.DAY_RANGE)
                 self.get.assert_called_with(
                     f"{main.FIRMS_BASE_URL}/test-key/{main.SOURCE}/"
-                    f"{main.AREA}/{main.DAY_RANGE}/{main.DATE}",
+                    f"{main.AREA}/{main.DAY_RANGE}",
                     timeout=60.0,
                 )
 
@@ -77,12 +77,12 @@ class APITests(unittest.TestCase):
 
     def test_quoted_values_and_utf8_bom_are_parsed(self):
         self.get.return_value = httpx.Response(
-            200, text='\ufefflatitude,note\r\n48.1,"smoke, fire\nobserved"\r\n'
+            200, text='\ufefflatitude,longitude,note\r\n48.1,-120.2,"smoke, fire\nobserved"\r\n'
         )
         response = self.client.get("/fires")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["rows"], [
-            {"latitude": "48.1", "note": "smoke, fire\nobserved"}
+            {"latitude": "48.1", "longitude": "-120.2", "note": "smoke, fire\nobserved"}
         ])
 
     def test_missing_or_blank_key_returns_500_without_a_request(self):
@@ -151,7 +151,7 @@ class APITests(unittest.TestCase):
         for route in ("/", "/fires", "/test", "/availability"):
             self.assertEqual(
                 set(schema["paths"][route]["get"]["responses"]),
-                {"200", "500", "502", "504"},
+                {"200", "422", "500", "502", "504"},
             )
         self.get.assert_not_called()
 

@@ -223,3 +223,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local analysis database and downloaded NASA data
+FireDetectionAPP/.data/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm

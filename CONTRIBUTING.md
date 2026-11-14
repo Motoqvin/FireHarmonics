@@ -48,8 +48,11 @@ git switch -c add-fire-filter
 
 ## 3. Make the change
 
-Endpoints and response models are in `FireDetectionAPP/main.py`.
-Tests are in `tests/test_api.py`.
+Endpoints are in `FireDetectionAPP/main.py`.
+Request and response models are in `FireDetectionAPP/schemas.py`.
+NASA calls, jobs, statistics, imports, and storage have separate modules.
+See the file map in [README](README.md#where-the-files-are).
+Tests are in `tests/`.
 
 Keep edits focused on the task.
 Update [API documentation](docs/API.md) if a response or endpoint changes.
