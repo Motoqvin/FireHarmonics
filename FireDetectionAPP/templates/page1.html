@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
+    <title>{{ title }}</title>
+
+    <style>
+        body {
+            max-width: 1100px;
+            margin: 40px auto;
+            padding: 0 20px;
+            font-family: Arial, sans-serif;
+            color: #1f2937;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            text-align: left;
+        }
+
+        th {
+            background: #f3f4f6;
+        }
+
+        .error {
+            padding: 12px;
+            color: #991b1b;
+            background: #fee2e2;
+            border: 1px solid #fca5a5;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>{{ title }}</h1>
+
+    {% if error %}
+        <div class="error">
+            <strong>API error:</strong> {{ error }}
+        </div>
+
+    {% else %}
+        <p>
+            Source: <strong>{{ source }}</strong>
+        </p>
+
+        <p>
+            FIRMS returned
+            <strong>{{ total_detections }}</strong>
+            detections.
+        </p>
+
+        {% if fire_data %}
+            <p>Showing the first 100 detections.</p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Location</th>
+                        <th>Date</th>
+                        <th>UTC time</th>
+                        <th>Satellite</th>
+                        <th>Confidence</th>
+                        <th>FRP</th>
+                        <th>Day/night</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for fire in fire_data %}
+                        <tr>
+                            <td>
+                                {{ fire.latitude }},
+                                {{ fire.longitude }}
+                            </td>
+
+                            <td>{{ fire.date }}</td>
+                            <td>{{ fire.time }}</td>
+                            <td>{{ fire.satellite }}</td>
+                            <td>{{ fire.confidence }}</td>
+
+                            <td>
+                                {% if fire.frp is not none %}
+                                    {{ fire.frp }} MW
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {% if fire.daynight == "D" %}
+                                    Day
+                                {% elif fire.daynight == "N" %}
+                                    Night
+                                {% else %}
+                                    {{ fire.daynight }}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+        {% else %}
+            <p>
+                The request worked, but no fire detections
+                were found for this area and period.
+            </p>
+        {% endif %}
+    {% endif %}
+</body>
+</html>
