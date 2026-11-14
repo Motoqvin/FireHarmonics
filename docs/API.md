@@ -26,9 +26,6 @@ There are currently no query parameters.
 `/docs` displays the interactive reference.
 `/openapi.json` returns the API schema.
 
-Fire model endpoints start with `/api/v1/`.
-See [FireLens model endpoints](MODEL_API.md).
-
 ## Health response
 
 ```bash

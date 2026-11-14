@@ -12,7 +12,6 @@ Read one guide at a time.
 | --- | --- |
 | Run the backend | [Setup](docs/SETUP.md) |
 | Use an endpoint | [API reference](docs/API.md) |
-| Use the fire model | [FireLens model endpoints](docs/MODEL_API.md) |
 | Change the code | [Contributing](CONTRIBUTING.md) |
 | Upload changes and invite a teammate | [GitHub sharing](docs/GITHUB.md) |
 
@@ -49,9 +48,6 @@ To test other endpoints, open:
 | `FireDetectionAPP/.env` | Your private NASA key; excluded from Git |
 | `requirements.txt` | Python dependencies |
 | `tests/test_api.py` | Tests with mocked NASA responses |
-| `FireDetectionAPP/firelens_api.py` | Fire model endpoints under `/api/v1/` |
-| `tests/test_firelens_api.py` | Tests for the fire model endpoints |
-| `firelens/` | The FireLens fire model package and its documentation |
 
 ## Before sharing this repository
 
