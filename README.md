@@ -2,7 +2,9 @@
 
 A Python backend for NASA fire detection data.
 
-It downloads CSV from NASA FIRMS and returns JSON through FastAPI.
+It downloads NASA FIRMS detections, imports historical exports, and returns
+JSON through FastAPI. Map-point analyses run as background jobs with progress
+and saved results. A prediction model can be added later.
 
 ## Start here
 
@@ -39,15 +41,43 @@ To test other endpoints, open:
 
 <http://127.0.0.1:8000/docs>
 
+## Analyse a map point
+
+Open `/docs` and choose **POST /api/v1/analyses**.
+
+Use this request body:
+
+```json
+{
+  "latitude": -13,
+  "longitude": 24,
+  "radius_km": 25
+}
+```
+
+Copy the returned `job_id`.
+Check progress with **GET /api/v1/analyses/{job_id}**.
+When it is complete, read **GET /api/v1/analyses/{job_id}/result**.
+
+The [API guide](docs/API.md) explains SSE events, retries, archive imports,
+and the limits of each statistic.
+
 ## Where the files are
 
 | File | Purpose |
 | --- | --- |
-| `FireDetectionAPP/main.py` | Endpoints, NASA requests, and CSV parsing |
+| `FireDetectionAPP/main.py` | API endpoints and application startup |
+| `FireDetectionAPP/nasa.py` | NASA requests and CSV parsing |
+| `FireDetectionAPP/jobs.py` | Background jobs, retries, and cache reuse |
+| `FireDetectionAPP/analytics.py` | Radius filtering and descriptive statistics |
+| `FireDetectionAPP/archives.py` | CSV, JSON, GeoJSON, and shapefile imports |
+| `FireDetectionAPP/storage.py` | Persistent SQLite results and progress events |
+| `FireDetectionAPP/schemas.py` | Request and response models |
+| `FireDetectionAPP/regions.py` | Five example map locations |
 | `FireDetectionAPP/.env.example` | Configuration example with a placeholder |
 | `FireDetectionAPP/.env` | Your private NASA key; excluded from Git |
 | `requirements.txt` | Python dependencies |
-| `tests/test_api.py` | Tests with mocked NASA responses |
+| `tests/` | API, worker, geospatial, statistics, and archive tests |
 
 ## Before sharing this repository
 
