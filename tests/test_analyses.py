@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from FireDetectionAPP import main
 from FireDetectionAPP.jobs import AnalysisService
+from FireDetectionAPP.ml_engine import DisabledEngine
 from FireDetectionAPP.schemas import AnalysisRequest
 from FireDetectionAPP.storage import now
 
@@ -23,7 +24,8 @@ CSV = "latitude,longitude,acq_date,acq_time,satellite,frp\n-13,24,2024-01-02,093
 class AnalysisTests(unittest.TestCase):
     def setUp(self):
         self.folder = self.enterContext(tempfile.TemporaryDirectory())
-        self.enterContext(patch.dict(os.environ, {"FIREHARMONICS_DATA_DIR": self.folder, "NASA_FIRMS_MAP_KEY": "test-key"}))
+        self.enterContext(patch.dict(os.environ, {"FIREHARMONICS_DATA_DIR": self.folder, "NASA_FIRMS_MAP_KEY": "test-key",
+                                                     "FIREHARMONICS_ML_ENGINE": "disabled"}))
         self.get = self.enterContext(patch.object(main.httpx, "get", side_effect=self.respond))
         self.client = self.enterContext(TestClient(main.app))
         self.manager = main.app.state.service
@@ -93,7 +95,7 @@ class AnalysisTests(unittest.TestCase):
         location = self.client.get("/api/v1/locations/analysis", params=PAYLOAD)
         self.assertEqual(location.status_code, 200, location.text)
         self.assertEqual(location.json()["result"]["detection_count"], 1)
-        other = AnalysisService(self.folder)
+        other = AnalysisService(self.folder, engine=DisabledEngine())
         try:
             self.assertEqual(other.store.job(job_id)["status"], "completed")
             self.assertEqual(other.store.cached(AnalysisRequest(**PAYLOAD))["result"]["detection_count"], 1)
@@ -204,7 +206,10 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1/regions/missing/patterns").status_code, 404)
         for path in ("/api/v1/analyses/missing", "/api/v1/analyses/missing/events", "/api/v1/analyses/missing/result"):
             self.assertEqual(self.client.get(path).status_code, 404)
-        self.assertEqual(self.client.get("/api/v1/model").json()["status"], "not_configured")
+        model = self.client.get("/api/v1/model").json()
+        self.assertEqual(model["status"], "disabled")   # tests run with FIREHARMONICS_ML_ENGINE=disabled
+        self.assertFalse(model["available"])
+        self.assertIsNone(model["prediction"]["probability"])
         self.get.assert_not_called()
 
     def test_no_overlap_fails_without_retry_or_area_requests(self):
@@ -219,7 +224,7 @@ class AnalysisTests(unittest.TestCase):
         stamp = now()
         self.manager.store.save_job({"job_id": "interrupted", "status": "running", "stage": "downloading",
                                      "created_at": stamp, "updated_at": stamp, "progress": 20})
-        restarted = AnalysisService(self.folder)
+        restarted = AnalysisService(self.folder, engine=DisabledEngine())
         try:
             record = restarted.store.job("interrupted")
             self.assertEqual(record["status"], "failed")

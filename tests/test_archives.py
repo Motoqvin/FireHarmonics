@@ -19,7 +19,8 @@ CSV = b"latitude,longitude,acq_date,acq_time,frp\n-13,24,2021-07-01,0930,12.5\n"
 class ArchiveTests(unittest.TestCase):
     def setUp(self):
         folder = self.enterContext(tempfile.TemporaryDirectory())
-        self.enterContext(patch.dict(os.environ, {"FIREHARMONICS_DATA_DIR": folder, "NASA_FIRMS_MAP_KEY": ""}))
+        self.enterContext(patch.dict(os.environ, {"FIREHARMONICS_DATA_DIR": folder, "NASA_FIRMS_MAP_KEY": "",
+                                                     "FIREHARMONICS_ML_ENGINE": "disabled"}))
         self.get = self.enterContext(patch.object(main.httpx, "get"))
         self.client = self.enterContext(TestClient(main.app))
 
